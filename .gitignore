@@ -1,0 +1,36 @@
+# built artifact
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.out
+
+*.test
+
+# Go specific transient artifact
+go.work
+go.work.sum
+
+# vite build output; only the packed web/dist.tar.zst is committed
+/web/dist/
+
+# LLM stuff
+apm_modules/
+
+/.apm/**/*.personal.*
+
+/.agents
+/.claude
+/.codex
+/.github/instructions
+/.github/skills
+
+CLAUDE*.md
+CODEX*.md
+GEMINI*.md
+
+CLAUDE.md
+AGENTS.md
+
+*.env
