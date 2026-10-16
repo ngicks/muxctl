@@ -1,0 +1,102 @@
+// Print one command section of a rendered tmux man page as Go `//` comment lines.
+//
+// usage: moon run --target native mansec.mbtx <tmux.man> <command>
+//
+// Render the page first with hyphenation and justification off, so the copy is verbatim:
+//
+//     MANWIDTH=90 MANPAGER=cat man --nh --nj tmux | sed 's/.\x08//g' > tmux.man
+
+import {
+  "moonbitlang/core/cmp",
+  "moonbitlang/core/env",
+  "moonbitlang/x@0.5.1/fs",
+  "moonbitlang/x@0.5.1/sys",
+}
+
+const INDENT = "     "
+
+fn is_space(c : Char) -> Bool {
+  c is (' ' | '\t' | '\n' | '\r' | '\u{0B}' | '\u{0C}')
+}
+
+// ^ {5}\S
+fn is_synopsis(l : String) -> Bool {
+  l.has_prefix(INDENT) && l.get_char(INDENT.length()) is Some(c) && !is_space(c)
+}
+
+// ^\S
+fn is_section_header(l : String) -> Bool {
+  l.get_char(0) is Some(c) && !is_space(c)
+}
+
+// ^ {5}<cmd>(\s|$)
+fn is_head(l : String, cmd : String) -> Bool {
+  let prefix = INDENT + cmd
+  guard l.has_prefix(prefix) else { return false }
+  match l.get_char(prefix.length()) {
+    None => true
+    Some(c) => is_space(c)
+  }
+}
+
+fn main {
+  let args = @env.args()
+  guard args.length() >= 3 else {
+    println("usage: mansec.mbtx <tmux.man> <command>")
+    @sys.exit(2)
+    return
+  }
+  let path = args[1]
+  let cmd = args[2]
+
+  let text = @fs.read_file_to_string(path) catch {
+    _ => {
+      println("cannot read \{path}")
+      @sys.exit(2)
+      return
+    }
+  }
+  let lines : Array[String] = text.split("\n").map(v => v.to_owned()).collect()
+
+  // A command name also appears at line start in prose and in the key binding table, so pick
+  // the synopsis: the one followed by "(alias: ...)", else the one listing flags in brackets.
+  let cands = []
+  for i, l in lines {
+    if is_head(l, cmd) {
+      cands.push(i)
+    }
+  }
+  let with_alias = cands.search_by(i => {
+    lines[i:@cmp.minimum(i + 6, lines.length())].iter().any(x => x.contains("(alias:"))
+  })
+  let start = match with_alias {
+    Some(n) => Some(cands[n])
+    None => cands.search_by(i => lines[i].contains("[")).map(n => cands[n])
+  }
+  guard start is Some(start) else {
+    println("not found: \{cmd}")
+    @sys.exit(1)
+    return
+  }
+
+  let out = [lines[start]]
+  for l in lines[start + 1:] {
+    // the next command synopsis (5-space indent) or a section header (column 0) ends it
+    if is_synopsis(l) || is_section_header(l) {
+      break
+    }
+    out.push(l)
+  }
+  while out.last() is Some(l) && l.trim().is_empty() {
+    out.pop() |> ignore
+  }
+
+  for l in out {
+    let body = if l.has_prefix(INDENT) {
+      l.view(start_offset=INDENT.length()).to_owned()
+    } else {
+      l.trim_start(chars=" \t\r").to_owned()
+    }
+    println("// \{body}".trim_end(chars=" \t\r").to_owned())
+  }
+}

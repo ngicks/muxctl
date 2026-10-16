@@ -58,15 +58,15 @@ Get the authoritative text and flags from the installed binaries. Never write th
 ```sh
 # tmux: render the man page without hyphenation or justification, then extract one section
 MANWIDTH=90 MANPAGER=cat man --nh --nj tmux | sed 's/.\x08//g' > /tmp/tmux.man
-deno run --allow-read "$SKILL_DIR/scripts/mansec.ts" /tmp/tmux.man <command>   # prints `//` comment lines
-tmux -L probe list-commands | grep '^<command> '                    # exact flag template
+moon run --target native "$SKILL_DIR/scripts/mansec.mbtx" /tmp/tmux.man <command>  # prints `//` comment lines
+tmux -L probe list-commands | grep '^<command> '                                    # exact flag template
 
 # zellij: the help text is the "man page"
 zellij <subcommand> --help
 zellij action <name> --help
 ```
 
-- `mansec.ts` cannot find `kill-server`, because its man entry has no synopsis. Copy that one by
+- `mansec.mbtx` cannot find `kill-server`, because its man entry has no synopsis. Copy that one by
   hand.
 - Where the man page and `list-commands` disagree, probe the real binary. Examples: tmux 3.7c
   rejects the documented `display-popup -K`, and `split-window` rejects `-x/-y/-X/-Y`.
@@ -103,10 +103,10 @@ Run from the worktree root:
 ```sh
 go build ./muxctllib/... && go vet ./muxctllib/... && test -z "$(gofmt -l muxctllib)"
 go test -count=1 -race ./muxctllib/internal/shellwrapper/...
-deno run --allow-read "$SKILL_DIR/scripts/check-layout.ts" muxctllib/internal/shellwrapper
+moon run --target native "$SKILL_DIR/scripts/check-layout.mbtx" muxctllib/internal/shellwrapper
 ```
 
-`check-layout.ts` exits non-zero and names each file that breaks the section order, whose man
+`check-layout.mbtx` exits non-zero and names each file that breaks the section order, whose man
 comment is not followed by a blank line, or whose option struct is not named `<Method>Option`.
 
 In the final report, list:

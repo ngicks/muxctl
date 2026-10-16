@@ -8,6 +8,9 @@
 
 *.test
 
+# moon build output, e.g. from `moon run <script>.mbtx`
+_build/
+
 # Go specific transient artifact
 go.work
 go.work.sum

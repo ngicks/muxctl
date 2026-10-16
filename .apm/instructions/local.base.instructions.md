@@ -15,8 +15,12 @@ muxctl is a mono repo that holds a terminal-multiplexer library and TUI apps bui
 - Go 1.27 (`go 1.27.0` in every `go.mod` and in `go.work`).
 - bubbletea for the TUI apps.
 - tmux (3.7c or later) and zellij (0.45 or later). They are driven only through their CLIs.
-- Deno (TypeScript) for helper scripts, e.g. the scripts bundled with skills. Do not use Python.
-  Run them with `deno run` and the narrowest `--allow-*` permissions they need.
+- MoonBit `.mbtx` scripts for helper scripts, e.g. the scripts bundled with skills. Do not use
+  Python or Deno.
+  - Run them with `moon run --target native <script>.mbtx <args>`.
+  - Pin imports from mooncakes to a version (e.g. `"moonbitlang/x@0.5.1/fs"`). Unpinned imports
+    resolve to the latest version in the local registry index.
+  - `moon run` writes its build output to `_build/` next to the script. `.gitignore` excludes it.
 
 ### Structure overview
 

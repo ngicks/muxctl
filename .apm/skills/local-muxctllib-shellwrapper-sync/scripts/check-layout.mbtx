@@ -1,0 +1,218 @@
+// Check the mandatory layout of shellwrapper command files.
+//
+// usage: moon run --target native check-layout.mbtx <shellwrapper dir>
+//
+// For every command file (not shell.go, not tests) checks:
+//   - a free-floating comment follows the imports and is followed by a blank line;
+//   - sections come in order: option types, result types, the exported ShellOut method, then
+//     helpers (unexported funcs and methods, including unexported ShellOut methods);
+//   - there is one exported ShellOut method, and its option parameter is <Method>Option.
+// Exits 1 if anything is reported.
+
+import {
+  "moonbitlang/core/cmp",
+  "moonbitlang/core/env",
+  "moonbitlang/core/hashset",
+  "moonbitlang/x@0.5.1/fs",
+  "moonbitlang/x@0.5.1/sys",
+}
+
+const OPTION = 1
+
+const RESULT = 2
+
+const METHOD = 3
+
+const HELPER = 4
+
+const METHOD_PREFIX = "func (s *ShellOut) "
+
+let bad : Ref[Int] = Ref(0)
+
+fn report(file : String, msg : String) -> Unit {
+  bad.val += 1
+  println("\{file}: \{msg}")
+}
+
+fn is_upper(c : Char) -> Bool {
+  c is ('A'..='Z')
+}
+
+fn is_word(c : Char) -> Bool {
+  c is ('a'..='z' | 'A'..='Z' | '0'..='9' | '_')
+}
+
+// Returns the end of the run of word characters in s starting at start.
+fn word_end(s : String, start : Int) -> Int {
+  let cs = s.to_array()
+  let mut i = start
+  while i < cs.length() && is_word(cs[i]) {
+    i += 1
+  }
+  i
+}
+
+fn substr(s : String, start : Int, end : Int) -> String {
+  String::from_array(s.to_array()[start:end])
+}
+
+fn rest(s : String, start : Int) -> String {
+  substr(s, start, s.to_array().length())
+}
+
+// ^\t([A-Z]\w*)$
+fn embedded_name(l : String) -> String? {
+  let cs = l.to_array()
+  guard cs.length() >= 2 && cs[0] == '\t' && is_upper(cs[1]) else { return None }
+  guard word_end(l, 1) == cs.length() else { return None }
+  Some(rest(l, 1))
+}
+
+// ^type (\w+) struct
+fn struct_name(l : String) -> String? {
+  guard l.has_prefix("type ") else { return None }
+  let end = word_end(l, 5)
+  guard end > 5 && rest(l, end).has_prefix(" struct") else { return None }
+  Some(substr(l, 5, end))
+}
+
+// ^func \(s \*ShellOut\) [A-Z]
+fn is_method(l : String) -> Bool {
+  guard l.has_prefix(METHOD_PREFIX) else { return false }
+  match rest(l, METHOD_PREFIX.length()).get_char(0) {
+    Some(c) => is_upper(c)
+    None => false
+  }
+}
+
+// ^func \(s \*ShellOut\) (\w+)\(ctx context\.Context(, opt (\w+))?
+// Returns the method name and the option type, if any.
+fn method_signature(l : String) -> (String, String?)? {
+  guard l.has_prefix(METHOD_PREFIX) else { return None }
+  let start = METHOD_PREFIX.length()
+  let end = word_end(l, start)
+  guard end > start else { return None }
+  let name = substr(l, start, end)
+  let after = rest(l, end)
+  guard after.has_prefix("(ctx context.Context") else { return None }
+  let params = rest(after, "(ctx context.Context".length())
+  guard params.has_prefix(", opt ") else { return Some((name, None)) }
+  let opt_end = word_end(params, 6)
+  guard opt_end > 6 else { return Some((name, None)) }
+  Some((name, Some(substr(params, 6, opt_end))))
+}
+
+fn check_file(file : String) -> Unit {
+  let text = @fs.read_file_to_string(file) catch {
+    _ => {
+      report(file, "cannot read")
+      return
+    }
+  }
+  let lines : Array[String] = text.split("\n").map(v => v.to_owned()).collect()
+  let at = i => if i < lines.length() { lines[i] } else { "" }
+
+  let mut i = 0
+  while i < lines.length() && !lines[i].has_prefix("import") {
+    i += 1
+  }
+  if at(i).trim_end().has_suffix("(") {
+    while i < lines.length() && lines[i] != ")" {
+      i += 1
+    }
+  }
+  i += 1
+  while i < lines.length() && lines[i] == "" {
+    i += 1
+  }
+  if !at(i).has_prefix("//") {
+    report(file, "no free-floating man/help comment after imports")
+    return
+  }
+  let mut end = i
+  while at(end).has_prefix("//") {
+    end += 1
+  }
+  if at(end) != "" {
+    report(file, "man/help comment is not followed by a blank line")
+  }
+
+  // A type embedded by an option struct (e.g. OptionScope) is itself an option type.
+  let embedded = @hashset.HashSet([])
+  for l in lines {
+    if embedded_name(l) is Some(name) {
+      embedded.add(name)
+    }
+  }
+  let kinds : Array[(Int, String)] = []
+  for l in lines[end:] {
+    if struct_name(l) is Some(t) && (t.has_suffix("Option") || embedded.contains(t)) {
+      kinds.push((OPTION, l))
+    } else if l.has_prefix("type ") {
+      kinds.push((RESULT, l))
+    } else if is_method(l) {
+      kinds.push((METHOD, l))
+    } else if l.has_prefix("func ") {
+      kinds.push((HELPER, l))
+    }
+  }
+  for n in 1..<kinds.length() {
+    if kinds[n].0 < kinds[n - 1].0 {
+      let sections = kinds.map(k => substr(k.1, 0, @cmp.minimum(50, k.1.to_array().length())))
+      report(file, "section order: " + sections.join("; "))
+      break
+    }
+  }
+
+  let methods = kinds.filter(k => k.0 == METHOD).map(k => k.1)
+  if methods.length() != 1 {
+    report(file, "want 1 exported ShellOut method, got \{methods.length()}")
+    return
+  }
+  if method_signature(methods[0]) is Some((name, Some(opt))) && opt != "\{name}Option" {
+    report(file, "option type \{opt}, want \{name}Option")
+  }
+}
+
+fn main {
+  let args = @env.args()
+  guard args.length() >= 2 else {
+    println("usage: check-layout.mbtx <shellwrapper dir>")
+    @sys.exit(2)
+    return
+  }
+  let root = args[1]
+
+  let files : Array[String] = []
+  let pkgs = @fs.read_dir(root) catch {
+    _ => {
+      println("cannot read \{root}")
+      @sys.exit(2)
+      return
+    }
+  }
+  for pkg in pkgs {
+    let dir = "\{root}/\{pkg}"
+    let is_dir = @fs.is_dir(dir) catch { _ => false }
+    guard is_dir else { continue }
+    let names = @fs.read_dir(dir) catch { _ => [] }
+    for name in names {
+      let path = "\{dir}/\{name}"
+      let is_file = @fs.is_file(path) catch { _ => false }
+      if !is_file || !name.has_suffix(".go") {
+        continue
+      }
+      if name.has_suffix("_test.go") || name == "shell.go" {
+        continue
+      }
+      files.push(path)
+    }
+  }
+  // String's Compare orders by length first, so sort lexically by hand.
+  files.sort_by((a, b) => a.lexical_compare(b))
+  for f in files {
+    check_file(f)
+  }
+
+  @sys.exit(if bad.val > 0 { 1 } else { 0 })
+}
