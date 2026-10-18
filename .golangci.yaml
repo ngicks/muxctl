@@ -54,11 +54,11 @@ linters:
       tab-width: 2
   exclusions:
     rules:
-      # pkg/claudehook/types mirrors the Claude Code SDK schema: its constant
-      # names and struct tags follow the upstream identifiers verbatim, and the
-      # round-trip test keeps the JSON samples on one line so they match what
-      # the harness writes. Wrapping either would only obscure the mirror.
-      - path: pkg/claudehook/types/
+      # Every command file in shellwrapper opens with a verbatim copy of the
+      # tmux man page section or the zellij --help output, and those copies
+      # routinely exceed 100 columns. Wrapping them would break the verbatim
+      # requirement, so the package is exempt from the line-length check.
+      - path: muxctllib/internal/shellwrapper/
         linters:
           - lll
 formatters:
@@ -72,3 +72,9 @@ formatters:
       shorten-comments: true
       # Default: true
       reformat-tags: false
+  exclusions:
+    paths:
+      # golines shorten-comments rewraps the verbatim man page / --help
+      # comments in shellwrapper. Formatter exclusions apply per path, not per
+      # formatter, so goimports is skipped for the package as well.
+      - muxctllib/internal/shellwrapper/
