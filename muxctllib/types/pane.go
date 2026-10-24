@@ -22,20 +22,13 @@ type Pane struct {
 	Options map[string]string
 }
 
-// PaneLister lists the panes of a window.
-type PaneLister interface {
-	Panes(ctx context.Context) ([]Pane, error)
-}
-
-// PaneResizer resizes a pane along one axis.
-type PaneResizer interface {
-	// Resize makes pane cells wide when horizontal is true and cells high
+// BasicMuxer is the pane operations every terminal multiplexer supports.
+type BasicMuxer interface {
+	// PaneList lists the panes of the window.
+	PaneList(ctx context.Context) ([]Pane, error)
+	// PaneResize makes pane cells wide when horizontal is true and cells high
 	// otherwise.
-	Resize(ctx context.Context, pane string, horizontal bool, cells int) error
-}
-
-// PaneFocuser focuses a pane.
-type PaneFocuser interface {
-	// Focus makes pane the window's active pane.
-	Focus(ctx context.Context, pane string) error
+	PaneResize(ctx context.Context, pane string, horizontal bool, cells int) error
+	// PaneFocus makes pane the window's active pane.
+	PaneFocus(ctx context.Context, pane string) error
 }
